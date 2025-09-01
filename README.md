@@ -1,9 +1,10 @@
 # Random Number Generators (RNG)
 
-This library provides an `RNG` type (Random Number Generator). This type
-represents a self-contained piece of data that encapsulates the state of a
-relatively fast and relatively secure pseudo-random number generator. The
-current implementation is based on the [ChaCha20 stream
+This library provides an `RNG` type (Random Number Generator) for
+[Tomo](https://tomo.bruce-hill.com). This type represents a self-contained
+piece of data that encapsulates the state of a relatively fast and relatively
+secure pseudo-random number generator. The current implementation is based on
+the [ChaCha20 stream
 cipher,](https://en.wikipedia.org/wiki/Salsa20#ChaCha_variant) inspired by
 [`arc4random` in OpenBSD.](https://man.openbsd.org/arc4random.3)
 
