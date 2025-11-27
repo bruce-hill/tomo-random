@@ -26,7 +26,6 @@ func _os_random_bytes(count:Int64 -> [Byte])
     `
 struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret)
     func new(seed:[Byte]?=none -> RandomNumberGenerator)
-        >> seed
         ctx := chacha_ctx.from_seed(seed or _os_random_bytes(40))
         return RandomNumberGenerator(ctx, [])
 
