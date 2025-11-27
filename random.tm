@@ -9,8 +9,18 @@ struct chacha_ctx(j0,j1,j2,j3,j4,j5,j6,j7,j8,j9,j10,j11,j12,j13,j14,j15:Int32; s
         ctx := chacha_ctx(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
         C_code`
             uint8_t seed_bytes[KEYSZ + IVSZ] = {};
-            for (int64_t i = 0; i < (int64_t)sizeof(seed_bytes); i++)
-                seed_bytes[i] = i < @seed.length ? *(uint8_t*)(@seed.data + i*@seed.stride) : 0;
+            if (@seed.length <= (int64_t)sizeof(seed_bytes)) {
+                for (int64_t i = 0; i < (int64_t)sizeof(seed_bytes); i++)
+                    seed_bytes[i] = i < @seed.length ? *(uint8_t*)(@seed.data + i*@seed.stride) : 0;
+            } else {
+                // If the seed is too big, we use as many bytes from the start of the seed as we can
+                // fit and then hash the rest of the seed and use the hash bytes at the end:
+                for (int64_t i = 0; i < KEYSZ + IVSZ - (int64_t)sizeof(uint64_t); i++)
+                    seed_bytes[i] = i < @seed.length ? *(uint8_t*)(@seed.data + i*@seed.stride) : 0;
+                List_t rest = List$from(@seed, I((int64_t)sizeof(seed_bytes)));
+                uint64_t hash = generic_hash(&rest, List$info(&Byte$info));
+                memcpy(seed_bytes + KEYSZ + IVSZ - sizeof(uint64_t), &hash, sizeof(hash));
+            }
             chacha_keysetup((void*)&@ctx, seed_bytes);
             chacha_ivsetup((void*)&@ctx, seed_bytes + KEYSZ);
         `
@@ -234,8 +244,14 @@ func main()
 
     cached := rng
 
-    assert rng.int64(1, 1000000) == cached.int64(1, 1000000)
-
     >> assert cached == rng
     >> assert rng.int64(1, 1000000) == cached.int64(1, 1000000)
 
+    seed1 := [Byte(i) for i in 255]
+    rng1 := RandomNumberGenerator.new(seed1)
+
+    # Similar at the start, but different at the end
+    seed2 := [(if i == 255 then Byte(0) else Byte(i)) for i in 255]
+    rng2 := RandomNumberGenerator.new(seed2)
+
+    assert rng1 != rng2

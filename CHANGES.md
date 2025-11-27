@@ -5,6 +5,10 @@
 Convert logic to implement RNGs as value-type structs without forcing them to
 be wrapped in pointers.
 
+### Fixes
+
+- Seed bytes beyond a certain point were ignored, but now the whole seed is used.
+
 ## v1.1
 
 Bug fixes and updates to reflect new Tomo syntax and internals.
