@@ -25,23 +25,25 @@ func _os_random_bytes(count:Int64 -> [Byte])
         (List_t){.length=@count, .data=random_bytes, .stride=1, .atomic=1}
     `
 struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret)
-    func new(seed:[Byte]?=none, -> @RandomNumberGenerator)
+    func new(seed:[Byte]?=none -> RandomNumberGenerator)
+        >> seed
         ctx := chacha_ctx.from_seed(seed or _os_random_bytes(40))
-        return @RandomNumberGenerator(ctx, [])
+        return RandomNumberGenerator(ctx, [])
 
     func _rekey(rng:&RandomNumberGenerator)
-        rng._random_bytes = C_code:[Byte]`
+        new_bytes : [Byte]
+        C_code `
             Byte_t new_keystream[KEYSZ + IVSZ] = {};
             // Fill the buffer with the keystream
             chacha_encrypt_bytes((void*)&@rng->_chacha, new_keystream, new_keystream, sizeof(new_keystream));
             // Immediately reinitialize for backtracking resistance
             chacha_keysetup((void*)&@rng->_chacha, new_keystream);
             chacha_ivsetup((void*)&@rng->_chacha, new_keystream + KEYSZ);
-            List_t new_bytes = (List_t){.data=GC_MALLOC_ATOMIC(1024), .length=1024, .stride=1, .atomic=1};
-            memset(new_bytes.data, 0, new_bytes.length);
-            chacha_encrypt_bytes((void*)&@rng->_chacha, new_bytes.data, new_bytes.data, new_bytes.length);
-            new_bytes
+            @new_bytes = (List_t){.data=GC_MALLOC_ATOMIC(1024), .length=1024, .stride=1, .atomic=1};
+            memset(@new_bytes.data, 0, @new_bytes.length);
+            chacha_encrypt_bytes((void*)&@rng->_chacha, @new_bytes.data, @new_bytes.data, @new_bytes.length);
         `
+        rng._random_bytes = new_bytes
 
     func _fill_bytes(rng:&RandomNumberGenerator, dest:&Memory, needed:Int64)
         C_code `
@@ -50,6 +52,9 @@ struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret
                     @(rng._rekey());
 
                 assert(@rng->_random_bytes.stride == 1);
+                if (@rng->_random_bytes.data_refcount > 0) {
+                    List$compact(&@rng->_random_bytes, sizeof(Byte_t));
+                }
 
                 int64_t batch_size = MIN(@needed, @rng->_random_bytes.length);
                 uint8_t *batch_src = @rng->_random_bytes.data;
@@ -160,7 +165,6 @@ struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret
         `
 
     func num(rng:&RandomNumberGenerator, min=0., max=1. -> Num)
-        num_buf : &Num
         return C_code:Num`
             if (@min > @max) fail("Random minimum value (", @min, ") is larger than the maximum value (", @max, ")");
             if (@min == @max) return @min;
@@ -169,8 +173,7 @@ struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret
                 Num_t num;
                 uint64_t bits;
             } r = {.bits=0}, one = {.num=1.0};
-            @num_buf = &r.num;
-            @(rng._fill_bytes(num_buf, 8));
+            @(rng._fill_bytes(C_code:&Num`&r.num`, 8));
 
             // Set r.num to 1.<random-bits>
             r.bits &= ~(0xFFFULL << 52);
@@ -221,14 +224,19 @@ struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret
 
 
 func main()
-    >> rng := RandomNumberGenerator.new()
+    >> bytes := "asdf".utf8()
+    rng := RandomNumberGenerator.new(bytes)
     >> rng.num()
     >> rng.num()
     >> rng.num()
     >> rng.num(0, 100)
     >> rng.byte()
     >> rng.bytes(20)
-    # >> rng.int(1, 100)
-    # >> rng.int(1, 100)
-    # >> rng.int(1, 100)
-    # >> rng.int(1, 100)
+
+    cached := rng
+
+    assert rng.int64(1, 1000000) == cached.int64(1, 1000000)
+
+    >> assert cached == rng
+    >> assert rng.int64(1, 1000000) == cached.int64(1, 1000000)
+

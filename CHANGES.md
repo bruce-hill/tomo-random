@@ -1,5 +1,10 @@
 # Version History
 
+## v1.2
+
+Convert logic to implement RNGs as value-type structs without forcing them to
+be wrapped in pointers.
+
 ## v1.1
 
 Bug fixes and updates to reflect new Tomo syntax and internals.
