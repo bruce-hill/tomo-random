@@ -1,5 +1,9 @@
 # Version History
 
+## v1.3
+
+Added min/max parameters to `RandomNumberGenerator.byte()` and fixed some bugs.
+
 ## v1.2
 
 Convert logic to implement RNGs as value-type structs without forcing them to

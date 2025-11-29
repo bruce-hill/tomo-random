@@ -82,10 +82,23 @@ struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret
         rng._fill_bytes(buf, count64)
         return C_code:[Byte]`(List_t){.data=@buf, .stride=1, .atomic=1, .length=@count64}`
 
-    func byte(rng:&RandomNumberGenerator -> Byte)
-        byte : &Byte
-        rng._fill_bytes(byte, 1)
-        return byte[]
+    func byte(rng:&RandomNumberGenerator, min:Byte=0, max:Byte=Byte.max -> Byte)
+        fail("Random minimum value $min is larger than the maximum value $max") if min > max
+        return min if min == max
+        random_byte : &Byte
+        rng._fill_bytes(random_byte, 1)
+        if min == 0 and max == Byte.max
+            return random_byte[]
+
+        return C_code:Byte`
+            Byte_t range = (Byte_t)@max - (Byte_t)@min + 1;
+            Byte_t min_r = -range % range;
+            for (;;) {
+                @(rng._fill_bytes(random_byte, 1));
+                if (*@random_byte >= min_r) break;
+            }
+            @min + (*@random_byte % range)
+        `
 
     func bool(rng:&RandomNumberGenerator, probability=0.5 -> Bool)
         if probability == 0.5
@@ -127,7 +140,7 @@ struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret
             uint32_t r;
             @random_int32 = (int32_t*)&r;
             for (;;) {
-                @(rng._fill_bytes(random_int32, 8));
+                @(rng._fill_bytes(random_int32, 4));
                 if (r >= min_r) break;
             }
             (int32_t)((uint32_t)@min + (r % range))
@@ -147,7 +160,7 @@ struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret
             uint16_t r;
             @random_int16 = (int16_t*)&r;
             for (;;) {
-                @(rng._fill_bytes(random_int16, 8));
+                @(rng._fill_bytes(random_int16, 2));
                 if (r >= min_r) break;
             }
             (int16_t)((uint16_t)@min + (r % range))
@@ -157,9 +170,9 @@ struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret
         fail("Random minimum value $min is larger than the maximum value $max") if min > max
         return min if min == max
         random_int8 : &Int8
-        rng._fill_bytes(random_int8, 8)
+        rng._fill_bytes(random_int8, 1)
         if min == Int8.min and max == Int8.max
-            return random_int8
+            return random_int8[]
 
         return C_code:Int8`
             uint8_t range = (uint8_t)@max - (uint8_t)@min + 1;
@@ -167,7 +180,7 @@ struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret
             uint8_t r;
             @random_int8 = (int8_t*)&r;
             for (;;) {
-                @(rng._fill_bytes(random_int8, 8));
+                @(rng._fill_bytes(random_int8, 1));
                 if (r >= min_r) break;
             }
             (int8_t)((uint8_t)@min + (r % range))
@@ -255,3 +268,14 @@ func main()
     rng2 := RandomNumberGenerator.new(seed2)
 
     assert rng1 != rng2
+
+
+    >> random.bool()
+    >> random.bool(0.7)
+    >> random.byte(1, 10)
+    >> random.int8(0xB, 0xF)
+    >> random.int16(1, 10)
+    >> random.int32(1, 10)
+    >> random.int64(1, 10)
+    >> random.num(1, 10)
+    >> random.num32(1, 10)
