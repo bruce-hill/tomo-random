@@ -1,8 +1,12 @@
 # Random Number Generator (RNG) implementation based on ChaCha
 
 use <assert.h>
+use <gc.h>
+use <gmp.h>
 use ./sysrandom.h
 use ./chacha.h
+use -lgmp
+use -lgc
 
 struct chacha_ctx(j0,j1,j2,j3,j4,j5,j6,j7,j8,j9,j10,j11,j12,j13,j14,j15:Int32; secret)
     func from_seed(seed:[Byte]=[] -> chacha_ctx)
@@ -187,8 +191,9 @@ struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret
         `
 
     func num(rng:&RandomNumberGenerator, min=0., max=1. -> Num)
+        if min > max
+            fail("Random minimum value ($min) is larger than the maximum value ($max)")
         return C_code:Num`
-            if (@min > @max) fail("Random minimum value (", @min, ") is larger than the maximum value (", @max, ")");
             if (@min == @max) return @min;
 
             union {
@@ -218,11 +223,13 @@ struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret
 
             int32_t cmp = @(min <> max);
             if (cmp > 0)
-                fail("Random minimum value (", @min, ") is larger than the maximum value (", @max, ")");
+                fail_text(Texts("Random minimum value (", @min, ") is larger than the maximum value (", @max, ")"));
             if (cmp == 0) return @min;
 
             mpz_t range_size;
-            mpz_init_set_int(range_size, @max);
+            if (@max.small & 1L) mpz_init_set_si(range_size, @max.small >> 2L);
+            else mpz_init_set(range_size, @max.big);
+
             if (@min.small & 1) {
                 mpz_t min_mpz;
                 mpz_init_set_si(min_mpz, @min.small >> 2);
@@ -241,7 +248,11 @@ struct RandomNumberGenerator(_chacha:chacha_ctx, _random_bytes:[Byte]=[]; secret
             mpz_urandomm(r, gmp_rng, range_size);
 
             gmp_randclear(gmp_rng);
-            Int$plus(@min, Int$from_mpz(r))
+
+            Int_t r_int = (mpz_cmpabs_ui(r, BIGGEST_SMALL_INT) <= 0
+                 ? ((Int_t){.small = (mpz_get_si(r) << 2L) | 1L})
+                 : ((Int_t){.big = memcpy(GC_MALLOC(sizeof(__mpz_struct)), r, sizeof(__mpz_struct))}));
+            Int$plus(@min, r_int)
         `
 
 
